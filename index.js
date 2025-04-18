@@ -1,21 +1,23 @@
-const autobahn = require('autobahn');
-const axios = require('axios');
+import autobahn from 'autobahn';
+import axios from 'axios';
+import cronClient from  '@outlawdesigns/cronmonitor-rest-client';
 
-global.config = require('./config');
-
-process.env.NODE_ENV = process.env.NODE_ENV || 'development';
+import config from './config.js';
 
 const wampConn = new autobahn.Connection({
-  url:global.config[process.env.NODE_ENV].WAMPURL,
-  realm:global.config[process.env.NODE_ENV].WAMPREALM
+  url:process.env.WAMPURL,
+  realm:process.env.WAMPREALM
 });
 
-/*
-publish authclient
-replace check token
-build cronCLient
-replace those.
-*/
+cronClient.init(process.env.CRON_API_END);
+cronClient.get().auth.init();
+let auth_token = await cronClient.get().auth.authenticate();
+cronClient.get().auth.onTokenUpdate((newToken)=>{
+  auth_token = newToken;
+});
+
+const POLL_LENGTH = config.DB_POLL_LENGTH;
+let subscriptions = [];
 
 
 function _setMsgRecipients(subscription,msgObj){
@@ -28,43 +30,8 @@ function _setMsgRecipients(subscription,msgObj){
   }
   return msgObj;
 }
-async function _checkToken(auth_token,username,password){
-  const verifyUrl = `${global.config[process.env.NODE_ENV].AUTH_END}/verify`;
-  const authUrl = `${global.config[process.env.NODE_ENV].AUTH_END}/authenticate`;
-  let headers = {'auth_token':auth_token};
-  let response = await axios.get(verifyUrl,{headers:headers});
-  if(response.status == 200 && !response.data.error){
-    return auth_token;
-  }else if(response.status == 200 && response.data.error && response.data.error.includes('Invalid Token')){
-    headers = {'request_token':username, 'password':password};
-    response = await axios.get(authUrl,{headers:headers});
-    if(response.status == 200 && !response.data.error){
-      return response.data.token;
-    }
-  }
-  //you should always return on one of the two prior conditions.
-  throw new Error(response.data);
-}
-async function _getSubscriptions(auth_token){
-  const url = `${global.config[process.env.NODE_ENV].CRON_API_END}/subscription`;
-  let headers = {'auth_token':auth_token};
-  let response = await axios.get(url,{headers:headers});
-  if(response.status == 200 && !response.data.error){
-    return response.data;
-  }
-  throw new Error('Unexpected subscription retrieval condition.');
-}
-async function _getAvgExecSec(id,auth_token){
-  const url = `${global.config[process.env.NODE_ENV].CRON_API_END}/job/${id}/avg`;
-  let headers = {'auth_token':auth_token};
-  let response = await axios.get(url,{headers:headers});
-  if(response.status == 200 && !response.data.error){
-    return response.data.avg_execution_seconds;
-  }
-  throw new Error('Unexpected subscription retrieval condition.');
-}
 async function _sendMessage(message,auth_token){
-  const url = global.config[process.env.NODE_ENV].MSG_SEND_URL;
+  const url = process.env.MSG_SEND_URL;
   const headers = {
     'auth_token':auth_token,
     'Content-Type':'application/json'
@@ -87,27 +54,20 @@ wampConn.onopen = async (session)=>{
 }*/
 
 //STATIC APPROACH
-const POLL_LENGTH = global.config[process.env.NODE_ENV].DB_POLL_LENGTH;
-const OD_USER = global.config[process.env.NODE_ENV].OD_USER;
-const OD_PASS = global.config[process.env.NODE_ENV].OD_PASS;
-
-let subscriptions = [];
-let auth_token = '1234';
 
 wampConn.onopen = async (session)=>{
+
   console.log('Connected to WAMP router...');
-  subscriptions = await _getSubscriptions(auth_token);
+  subscriptions = await cronClient.get().subscriptions.getAll();
   console.log(`${subscriptions.length} subscriptions retrieved...`);
-  auth_token = await _checkToken(auth_token,OD_USER,OD_PASS);
-  console.log('Messeage Service token retrieved...');
+
   session.subscribe('io.outlawdesigns.cron.executionMissed',async (data)=>{
-    let relevantSubs = subscriptions.filter(e => e.event_name == 'io.outlawdesigns.cron.executionMissed');
+    let relevantSubs = subscriptions.filter(e => e.name == 'io.outlawdesigns.cron.executionMissed');
     if(relevantSubs.length === 0){
       return;
     }
-    auth_token = await _checkToken(auth_token,OD_USER,OD_PASS);
     let job = data[0];
-    let avgExecSec = await _getAvgExecSec(job.id,auth_token);
+    let avgExecSec = await cronClient.get().jobs.getAvgExecution(job.id);
     let msgBody = `${job.title} has exceeded expected execution time of ${avgExecSec} seconds and is presumed failed. See ${job.hostname}:${job.outfile} for more details.`;
     for(let i in relevantSubs){
       let sub = relevantSubs[i];
@@ -121,12 +81,12 @@ wampConn.onopen = async (session)=>{
       console.log('io.outlawdesigns.cron.executionMissed message sent...');
     }
   });
-  session.subscribe('io.outlawdesigns.cron.illegalExecution',(data)=>{
-    let relevantSubs = subscriptions.filter(e => e.event_name == 'io.outlawdesigns.cron.illegalExecution');
+
+  session.subscribe('io.outlawdesigns.cron.illegalExecution',async (data)=>{
+    let relevantSubs = subscriptions.filter(e => e.name == 'io.outlawdesigns.cron.illegalExecution');
     if(relevantSubs.length === 0){
       return;
     }
-    auth_token = await _checkToken(auth_token,OD_USER,OD_PASS);
     let execution = data[0];
     let msgBody = `An execution has been created for a disabled or unregistered job with ID: ${execution.jobId}`;
     for(let i in relevantSubs){
@@ -139,12 +99,12 @@ wampConn.onopen = async (session)=>{
       console.log('io.outlawdesigns.cron.illegalExecution message sent...');
     }
   });
-  session.subscribe('io.outlawdesigns.cron.executionComplete',(data)=>{
-    let relevantSubs = subscriptions.filter(e => e.event_name == 'io.outlawdesigns.cron.executionComplete');
+
+  session.subscribe('io.outlawdesigns.cron.executionComplete',async (data)=>{
+    let relevantSubs = subscriptions.filter(e => e.name == 'io.outlawdesigns.cron.executionComplete');
     if(relevantSubs.length === 0){
       return;
     }
-    auth_token = await _checkToken(auth_token,OD_USER,OD_PASS);
     let job = data[0];
     let execution = data[1];
     let msgBody = `${job.title} has executed on-schedule. Ouptut: ${execution.output}`;
@@ -159,12 +119,12 @@ wampConn.onopen = async (session)=>{
       console.log('io.outlawdesigns.cron.illegalExecution message sent...');
     }
   });
-  session.subscribe('io.outlawdesigns.cron.jobDeleted',(data)=>{
-    let relevantSubs = subscriptions.filter(e => e.event_name == 'io.outlawdesigns.cron.jobDeleted');
+
+  session.subscribe('io.outlawdesigns.cron.jobDeleted',async (data)=>{
+    let relevantSubs = subscriptions.filter(e => e.name == 'io.outlawdesigns.cron.jobDeleted');
     if(relevantSubs.length === 0){
       return;
     }
-    auth_token = await _checkToken(auth_token,OD_USER,OD_PASS);
     let job = data[0];
     let msgBody = ``;
     for(let i in relevantSubs){
@@ -176,12 +136,12 @@ wampConn.onopen = async (session)=>{
       }),auth_token);
     }
   });
-  session.subscribe('io.outlawdesigns.cron.jobChanged',(data)=>{
-    let relevantSubs = subscriptions.filter(e => e.event_name == 'io.outlawdesigns.cron.jobChanged');
+
+  session.subscribe('io.outlawdesigns.cron.jobChanged',async (data)=>{
+    let relevantSubs = subscriptions.filter(e => e.name == 'io.outlawdesigns.cron.jobChanged');
     if(relevantSubs.length === 0){
       return;
     }
-    auth_token = await _checkToken(auth_token,OD_USER,OD_PASS);
     let oldJob = data[0];
     let newJob = data[1];
     let msgBody = ``;
@@ -194,12 +154,12 @@ wampConn.onopen = async (session)=>{
       }),auth_token);
     }
   });
-  session.subscribe('io.outlawdesigns.cron.jobCreated',(data)=>{
-    let relevantSubs = subscriptions.filter(e => e.event_name == 'io.outlawdesigns.cron.jobCreated');
+
+  session.subscribe('io.outlawdesigns.cron.jobCreated',async (data)=>{
+    let relevantSubs = subscriptions.filter(e => e.name == 'io.outlawdesigns.cron.jobCreated');
     if(relevantSubs.length === 0){
       return;
     }
-    auth_token = await _checkToken(auth_token,OD_USER,OD_PASS);
     let job = data[0];
     let msgBody = ``;
     for(let i in relevantSubs){
@@ -211,9 +171,9 @@ wampConn.onopen = async (session)=>{
       }),auth_token);
     }
   });
+
   setInterval(async ()=>{
-    auth_token = await _checkToken(auth_token,OD_USER,OD_PASS);
-    const updatedSubs = await _getSubscriptions(auth_token);
+    const updatedSubs = await cronClient.get().subscriptions.getAll();
     if(updatedSubs.length !== subscriptions.length){
       subscriptions = updatedSubs;
     }
@@ -226,6 +186,6 @@ wampConn.open();
 
 // (async ()=>{
 //   let subs = await _getSubscriptions();
-//   let relevantSubs = subs.filter(e => e.event_name == 'io.outlawdesigns.cron.executionMissed');
+//   let relevantSubs = subs.filter(e => e.name == 'io.outlawdesigns.cron.executionMissed');
 //   console.log(relevantSubs);
 // })();
