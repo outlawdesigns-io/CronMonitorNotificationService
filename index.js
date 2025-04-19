@@ -17,6 +17,7 @@ cronClient.get().auth.onTokenUpdate((newToken)=>{
 });
 
 const POLL_LENGTH = config.DB_POLL_LENGTH;
+let eventTypes = [];
 let subscriptions = [];
 
 
@@ -37,6 +38,7 @@ async function _sendMessage(message,auth_token){
     'Content-Type':'application/json'
   };
   const response = await axios.post(url,message,{ headers:headers });
+  console.log(response.data);
   return response.data;
 }
 
@@ -58,11 +60,15 @@ wampConn.onopen = async (session)=>{
 wampConn.onopen = async (session)=>{
 
   console.log('Connected to WAMP router...');
-  subscriptions = await cronClient.get().subscriptions.getAll();
+  eventTypes = await cronClient.get().events.getAll();
+  subscriptions = (await cronClient.get().subscriptions.getAll()).map((e)=>{
+    e.eventObj = eventTypes.filter(f => f.id === e.eventId)[0];
+    return e;
+  });
   console.log(`${subscriptions.length} subscriptions retrieved...`);
 
   session.subscribe('io.outlawdesigns.cron.executionMissed',async (data)=>{
-    let relevantSubs = subscriptions.filter(e => e.name == 'io.outlawdesigns.cron.executionMissed');
+    let relevantSubs = subscriptions.filter(e => e.eventObj.name == 'io.outlawdesigns.cron.executionMissed');
     if(relevantSubs.length === 0){
       return;
     }
@@ -83,7 +89,7 @@ wampConn.onopen = async (session)=>{
   });
 
   session.subscribe('io.outlawdesigns.cron.illegalExecution',async (data)=>{
-    let relevantSubs = subscriptions.filter(e => e.name == 'io.outlawdesigns.cron.illegalExecution');
+    let relevantSubs = subscriptions.filter(e => e.eventObj.name == 'io.outlawdesigns.cron.illegalExecution');
     if(relevantSubs.length === 0){
       return;
     }
@@ -101,7 +107,7 @@ wampConn.onopen = async (session)=>{
   });
 
   session.subscribe('io.outlawdesigns.cron.executionComplete',async (data)=>{
-    let relevantSubs = subscriptions.filter(e => e.name == 'io.outlawdesigns.cron.executionComplete');
+    let relevantSubs = subscriptions.filter(e => e.eventObj.name == 'io.outlawdesigns.cron.executionComplete');
     if(relevantSubs.length === 0){
       return;
     }
@@ -121,7 +127,7 @@ wampConn.onopen = async (session)=>{
   });
 
   session.subscribe('io.outlawdesigns.cron.jobDeleted',async (data)=>{
-    let relevantSubs = subscriptions.filter(e => e.name == 'io.outlawdesigns.cron.jobDeleted');
+    let relevantSubs = subscriptions.filter(e => e.eventObj.name == 'io.outlawdesigns.cron.jobDeleted');
     if(relevantSubs.length === 0){
       return;
     }
@@ -138,7 +144,7 @@ wampConn.onopen = async (session)=>{
   });
 
   session.subscribe('io.outlawdesigns.cron.jobChanged',async (data)=>{
-    let relevantSubs = subscriptions.filter(e => e.name == 'io.outlawdesigns.cron.jobChanged');
+    let relevantSubs = subscriptions.filter(e => e.eventObj.name == 'io.outlawdesigns.cron.jobChanged');
     if(relevantSubs.length === 0){
       return;
     }
@@ -156,7 +162,7 @@ wampConn.onopen = async (session)=>{
   });
 
   session.subscribe('io.outlawdesigns.cron.jobCreated',async (data)=>{
-    let relevantSubs = subscriptions.filter(e => e.name == 'io.outlawdesigns.cron.jobCreated');
+    let relevantSubs = subscriptions.filter(e => e.eventObj.name == 'io.outlawdesigns.cron.jobCreated');
     if(relevantSubs.length === 0){
       return;
     }
@@ -175,7 +181,10 @@ wampConn.onopen = async (session)=>{
   setInterval(async ()=>{
     const updatedSubs = await cronClient.get().subscriptions.getAll();
     if(updatedSubs.length !== subscriptions.length){
-      subscriptions = updatedSubs;
+      subscriptions = updatedSubs.map((e)=>{
+        e.eventObj = eventTypes.filter(f => f.id === e.eventId)[0];
+        return e;
+      });
     }
   },POLL_LENGTH);
 }
@@ -186,6 +195,6 @@ wampConn.open();
 
 // (async ()=>{
 //   let subs = await _getSubscriptions();
-//   let relevantSubs = subs.filter(e => e.name == 'io.outlawdesigns.cron.executionMissed');
+//   let relevantSubs = subs.filter(e => e.eventObj.name == 'io.outlawdesigns.cron.executionMissed');
 //   console.log(relevantSubs);
 // })();
