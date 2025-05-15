@@ -1,7 +1,7 @@
 import autobahn from 'autobahn';
 import axios from 'axios';
 import cronClient from  '@outlawdesigns/cronmonitor-rest-client';
-
+import templatePopulator from './templatePopulator.js';
 import config from './config.js';
 
 const wampConn = new autobahn.Connection({
@@ -54,6 +54,8 @@ wampConn.onopen = async (session)=>{
     });
   }
 }*/
+
+//^ I think we can make this work if we ensure templatePopulator methods match event name
 
 //STATIC APPROACH
 
@@ -113,7 +115,7 @@ wampConn.onopen = async (session)=>{
     }
     let job = data[0];
     let execution = data[1];
-    let msgBody = `${job.title} has executed on-schedule. Ouptut: ${execution.output}`;
+    let msgBody = templatePopulator.executionComplete(job,execution);
     for(let i in relevantSubs){
       let sub = relevantSubs[i];
       _sendMessage(_setMsgRecipients(sub,{
@@ -132,7 +134,7 @@ wampConn.onopen = async (session)=>{
       return;
     }
     let job = data[0];
-    let msgBody = ``;
+    let msgBody = templatePopulator.jobDeleted(job);
     for(let i in relevantSubs){
       let sub = relevantSubs[i];
       _sendMessage(_setMsgRecipients(sub,{
@@ -150,7 +152,7 @@ wampConn.onopen = async (session)=>{
     }
     let oldJob = data[0];
     let newJob = data[1];
-    let msgBody = ``;
+    let msgBody = templatePopulator.jobChanged(oldJob,newJob);
     for(let i in relevantSubs){
       let sub = relevantSubs[i];
       _sendMessage(_setMsgRecipients(sub,{
@@ -167,7 +169,7 @@ wampConn.onopen = async (session)=>{
       return;
     }
     let job = data[0];
-    let msgBody = ``;
+    let msgBody = templatePopulator.newJob(job);
     for(let i in relevantSubs){
       let sub = relevantSubs[i];
       _sendMessage(_setMsgRecipients(sub,{
