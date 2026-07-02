@@ -12,7 +12,9 @@
   "dependencies": {
     "@outlawdesigns/cronmonitor-rest-client": "^1.0.0",
     "autobahn": "^22.11.1",
-    "axios": "^1.8.4"
+    "axios": "^1.8.4",
+    "node-fetch": "^3.3.2",
+    "openid-client": "^6.6.2"
   },
-  "type":"module"
+  "type": "module"
 }
