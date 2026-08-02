@@ -10,7 +10,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@outlawdesigns/cronmonitor-rest-client": "^1.0.0",
+    "@outlawdesigns/cronmonitor-rest-client": "^2.0.8",
     "autobahn": "^22.11.1",
     "axios": "^1.8.4",
     "node-fetch": "^3.3.2",

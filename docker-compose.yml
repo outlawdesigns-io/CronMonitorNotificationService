@@ -1,0 +1,19 @@
+services:
+  backend:
+    image: cronnotifications-wamp
+    environment:
+      NODE_ENV: development
+      TZ: America/Chicago
+      WAMPURL: ws://localhost:8081/ws
+      WAMPREALM: oauth2
+      OAUTH_DISC_URI: https://auth.outlawdesigns.io/.well-known/openid-configuration
+      CLIENT_ID: cronsuite-notifications
+      CLIENT_SECRET: 123456
+      OAUTH_SCOPE: "openid, profile, email, roles"
+      WAMP_AUDIENCE: wamp-client
+      CRON_API_END: http://localhost:9001
+      MSG_SEND_URL: http://localhost:9001
+      API_POLL_LENGTH: 1800000
+    build:
+      context: ./
+      dockerfile: ./Dockerfile
